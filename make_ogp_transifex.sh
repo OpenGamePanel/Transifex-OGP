@@ -98,6 +98,10 @@ function makeOGPStructure(){
 					langPath="lang/Russian"
 					copyFile
 					;;
+				"it.php")
+					langPath="lang/Italian"
+					copyFile
+					;;
 				esac
 			done
 			cd ..
