@@ -60,7 +60,7 @@ function WriteNewLanguageCodeAndStrIfNeeded(){
 		contents=$(cat "$LANGCodesFile")
 		hasLangCode=$(echo "$contents" | grep -o "${LANGToAddCode}=")
 		if [ -z "$hasLangCode" ]; then
-			echo "${LANGToAddCode}=${LANGToAdd}" >> "$LANGCodesFile"
+			echo "${LANGToAddCode}='${LANGToAdd}'" >> "$LANGCodesFile"
 		fi
 	fi
 }
