@@ -195,6 +195,7 @@ function copyOGPStructureToAllGitRepos(){
 		for folder in `find "${gitDir}" -mindepth 1 -maxdepth 1 -type d`; do
 			logMessage "Current github folder is $folder"
 			cd "$folder"
+			pWD=$(pwd)
                         
 			# Get latest files from GitHub repo
 			"$gitPath" pull
@@ -209,11 +210,12 @@ function copyOGPStructureToAllGitRepos(){
                         
 			# Copy our bundled language files which includes languages for everything in this repo / module
 			cp -rf "$transifexDir/staging/lang" "$folder"
+			addOtherLanguagesToBaseLangFilesIfNotVersioned "$folder" "$found"
                         
 			# Handle adding new language files if any to the repo
 			if [ ! -z "${found}" ]; then
 				logMessage "Found this list of files that exist in the base master language of ${BaseLang} for this git repository (${pWD}):"
-				logMessage $(echo ${found})
+				logMessage "${found}"
 				handleNewLanguages "${found}"
 			fi
                         
@@ -228,10 +230,9 @@ function copyOGPStructureToAllGitRepos(){
 function handleNewLanguages(){
 	if [ ! -z "$LANGToAdd" ] && [ ! -z "$1" ]; then
 		logMessage "We have new languages to add!"
-		pWD=$(pwd)
 		for var in "${LANGToAdd[@]}"
 		do
-			for i in `echo ${1}`
+			for i in `echo -e ${1}`
 			do
 				if [ -e "${LangFolder}/${var}/${i}" ]; then
 					logMessage "Adding file ${LangFolder}/${var}/${i} to GitHub repo ${pWD}!"
@@ -246,6 +247,22 @@ function handleNewLanguages(){
 	fi
 }
 
+function addOtherLanguagesToBaseLangFilesIfNotVersioned(){
+	# $1 is the github directory foler
+	# $2 is the list of found files
+	for i in `echo -e ${2}`
+	do
+		for folder in `find "${1}/${LangFolder}" -mindepth 1 -maxdepth 1 -type d`; do
+			if [ -e "${folder}/${i}" ]; then
+				versioned=$("$gitPath" ls-files "${folder}/${i}")
+				if [ -z "$versioned" ]; then
+					logMessage "File ${folder}/${i} is not versioned. Adding it now..."
+					"$gitPath" add "${folder}/${i}"
+				fi
+			fi 
+		done
+	done
+}
 ######################
 #  Main ##############
 ######################
