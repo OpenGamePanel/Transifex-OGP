@@ -2,13 +2,33 @@
 # Author:  own3mall <own3mall@gmail.com>
 # About:  Script that pulls the transifex files, puts them in the OGP stucture, copies the structure to the website and every module folder, runs a git pull, git clean, git commit, git push to remote repositories :D
 # Optional parameter ($1) is any new language to add
+# Optional parameter ($2) is new language short code to add
+# Optional parameter ($3) is optional debug param - can be set to any value - which will debug certain operations in the script in case there are any problems you run into...
+
+# Prereqs / one time setup before running noninteractively
+#
+# Install latest transifex cli client:
+#
+# cd /usr/local/bin/
+# curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash 
+#
+# Setup transifex config by:
+#
+# cd ${transifexDir} # ${transifexDir} is defined in setGlobalVars function and is the directory where this script lives...
+# Run `/usr/local/bin/tx init` in ${transifexDir}
+# Run `/usr/local/bin/tx add remote https://www.transifex.com/opengamepanel/ogp`
+# Run `/usr/local/bin/tx pull -a`			
+#
+# Provide your Transifex API key when prompted (which will be saved for future runs)
+#
+# Get your Transifex API key here:  https://help.transifex.com/en/articles/6248858-generating-an-api-token
+#
+# That's it!  Script is ready to run from now on.
 
 ######################
 #   IMPORTANT VARS   #
 ######################
 
-transifexUser="{YOUR_TRANSIFEX_USER_HERE}"
-transifexPass="{YOUR_TRANSIFEX_PASS_HERE}"
 linuxUser="{YOUR_LINUX_USERNAME_HERE}"
 
 ######################
@@ -17,6 +37,7 @@ linuxUser="{YOUR_LINUX_USERNAME_HERE}"
 function setGlobalVars(){
 	# $1 is new languages string to add
 	# $2 is new language short code to add
+	# $3 is optional skip param
 	# Variables
 	transifexDir="/home/${linuxUser}/transifex"
 	gitDir="/home/${linuxUser}/github"
@@ -29,6 +50,7 @@ function setGlobalVars(){
 	debug=true
 	LANGToAdd="$1"
 	LANGToAddCode="$2"
+	DebugOps="$3"
 	LANGCodesFile="/home/${linuxUser}/langCodes"
 	
 	# Adjust log file to contain new language in file name to distinguish the log file types
@@ -79,98 +101,102 @@ function copyFile(){
 }
 
 function getTranslations(){
-	cd "$transifexDir"
-	rm -rf ".tx"
-	rm -rf translations
-	/usr/local/bin/tx init --host="https://www.transifex.com" --user="${transifexUser}" --pass="${transifexPass}"
-	/usr/local/bin/tx set --auto-remote https://www.transifex.com/opengamepanel/ogp
-	/usr/local/bin/tx pull -a -s
-	if [ ! -d "translations" ]; then
-		logMessage "Failed to retrieve translation files."
-		exit
+	if [ -z "$DebugOps" ]; then
+		cd "$transifexDir"
+		rm -rf ".tx"
+		rm -rf translations
+		/usr/local/bin/tx init
+		/usr/local/bin/tx add remote https://www.transifex.com/opengamepanel/ogp
+		/usr/local/bin/tx pull -a
+		if [ ! -d "translations" ]; then
+			logMessage "Failed to retrieve translation files."
+			exit
+		fi
+		rm -rf staging
+		mkdir -p staging
+		cp -r translations/* staging
 	fi
-	rm -rf staging
-	mkdir -p staging
-	cp -r translations/* staging
 }
 
 function makeOGPStructure(){
-	cd "$transifexDir"
-	cd staging
-	
-	for folder in `find ./* -type d`; do
-		# https://stackoverflow.com/questions/20348097/bash-extract-string-before-a-colon
-		# IN THIS CASE, EXTRACT STRING BEFORE ENDING "php"
-		OGPFileNamePRE=$(cut -d "." -f 3 <<< "$folder" | sed 's/php$//')
-		OGPFileNamePHP="${OGPFileNamePRE}.php"
+	if [ -z "$DebugOps" ]; then
+		cd "$transifexDir"
+		cd staging
+		
+		for folder in `find ./* -type d`; do
+			# https://stackoverflow.com/questions/20348097/bash-extract-string-before-a-colon
+			# IN THIS CASE, EXTRACT STRING BEFORE ENDING "php"
+			OGPFileNamePRE=$(cut -d "." -f 3 <<< "$folder" | sed 's/php$//')
+			OGPFileNamePHP="${OGPFileNamePRE}.php"
 
-		# Logging
-		logMessage "Current translation folder is $folder"
-		logMessage "OGP module name is $OGPFileNamePRE"
-		logMessage "OGP full language file name is $OGPFileNamePHP"
+			# Logging
+			logMessage "Current translation folder is $folder"
+			logMessage "OGP module name is $OGPFileNamePRE"
+			logMessage "OGP full language file name is $OGPFileNamePHP"
 
-		if [ -e "$folder" ]; then
-			cd "$folder"
-			for f in `find ./* -type f | sed "s|^\./||"`; do
-				cpyFile=true
-				langPath=
-				case "$f" in
-					"en.php")
-						langPath="lang/English"
-						;;
-					"da.php")
-						langPath="lang/Danish"
-						;;
-					"de.php")
-						langPath="lang/German"
-                        ;;
-					"es.php")
-						langPath="lang/Spanish"
-                        ;;
-					"fr.php")
-						langPath="lang/French"
-						;;
-					"hu.php")
-						langPath="lang/Hungarian"
-						;;
-					"pl.php")
-						langPath="lang/Polish"
-						;;
-					"pt.php")
-						langPath="lang/Portuguese"
-						;;
-					"ru.php")
-						langPath="lang/Russian"
-						;;
-					"it.php")
-						langPath="lang/Italian"
-						;;
-					"ar.php")
-						langPath="lang/Arabic"
-						;;
-					"${LANGToAddCode}.php")
-						langPath="lang/${LANGToAdd}"
-						;;
-					*)
-						# Check and see if it's defined in our lang code file
-						fileNameLangCode="$(returnUntilLastMatch "$f" ".")"
-						if [ ! -z "${!fileNameLangCode}" ]; then
-							langPath="lang/${!fileNameLangCode}"
-						else
-							cpyFile=false
-						fi
-						;;
-				esac
-				
-				# copy the files over if needed based on language
-				if [ "$cpyFile" = true ] && [ ! -z "$langPath" ]; then
-					copyFile
-				fi
-				
-			done
-			cd ..
-		fi
-	done
+			if [ -e "$folder" ]; then
+				cd "$folder"
+				for f in `find ./* -type f | sed "s|^\./||"`; do
+					cpyFile=true
+					langPath=
+					case "$f" in
+						"en.php")
+							langPath="lang/English"
+							;;
+						"da.php")
+							langPath="lang/Danish"
+							;;
+						"de.php")
+							langPath="lang/German"
+							;;
+						"es.php")
+							langPath="lang/Spanish"
+							;;
+						"fr.php")
+							langPath="lang/French"
+							;;
+						"hu.php")
+							langPath="lang/Hungarian"
+							;;
+						"pl.php")
+							langPath="lang/Polish"
+							;;
+						"pt.php")
+							langPath="lang/Portuguese"
+							;;
+						"ru.php")
+							langPath="lang/Russian"
+							;;
+						"it.php")
+							langPath="lang/Italian"
+							;;
+						"ar.php")
+							langPath="lang/Arabic"
+							;;
+						"${LANGToAddCode}.php")
+							langPath="lang/${LANGToAdd}"
+							;;
+						*)
+							# Check and see if it's defined in our lang code file
+							fileNameLangCode="$(returnUntilLastMatch "$f" ".")"
+							if [ ! -z "${!fileNameLangCode}" ]; then
+								langPath="lang/${!fileNameLangCode}"
+							else
+								cpyFile=false
+							fi
+							;;
+					esac
+					
+					# copy the files over if needed based on language
+					if [ "$cpyFile" = true ] && [ ! -z "$langPath" ]; then
+						copyFile
+					fi
+					
+				done
+				cd ..
+			fi
+		done
+	fi
 }
 
 function returnUntilLastMatch(){
@@ -207,9 +233,17 @@ function copyOGPStructureToAllGitRepos(){
 			# Search for existing files within the BaseLang folder so we know how to handle
 			# any possible new language files once we copy the mess of all module language files into this directory
 			found=$(find ${LangFolder}/${BaseLang} -type f | sed -e "s,^${LangFolder}/${BaseLang}/,,";)
+			if [ ! -z "$DebugOps" ]; then
+				for i in `echo -e ${found}`
+				do
+					echo "$i is found!"
+				done
+			fi
                         
 			# Copy our bundled language files which includes languages for everything in this repo / module
 			cp -rf "$transifexDir/staging/lang" "$folder"
+			
+			# Handle adding other languages to git repo
 			addOtherLanguagesToBaseLangFilesIfNotVersioned "$folder" "$found"
                         
 			# Handle adding new language files if any to the repo
@@ -263,10 +297,11 @@ function addOtherLanguagesToBaseLangFilesIfNotVersioned(){
 		done
 	done
 }
+
 ######################
 #  Main ##############
 ######################
-setGlobalVars "$1" "$2"
+setGlobalVars "$1" "$2" "$3"
 clearLogFilesOlderThan
 getTranslations
 makeOGPStructure
